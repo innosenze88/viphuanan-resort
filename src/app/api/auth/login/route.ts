@@ -42,9 +42,10 @@ export async function POST(req: NextRequest) {
     });
 
     const response = NextResponse.json({ success: true, data: { user } });
+    const isHttpsUrl = process.env.NEXTAUTH_URL?.startsWith("https://") ?? false;
     response.cookies.set(SESSION_COOKIE, token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: isHttpsUrl,
       sameSite: "lax",
       maxAge: 12 * 60 * 60, // 12 hours
       path: "/",
