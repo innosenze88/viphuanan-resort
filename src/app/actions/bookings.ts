@@ -226,6 +226,16 @@ export async function checkOut(bookingId: string): Promise<{ error?: string }> {
       where: { id: booking.roomId },
       data: { status: RoomStatus.DIRTY },
     });
+
+    // Auto-create housekeeping task for post-checkout clean
+    await tx.housekeepingTask.create({
+      data: {
+        roomId: booking.roomId,
+        taskType: "CHECKOUT_CLEAN",
+        priority: "HIGH",
+        createdBy: user.name,
+      },
+    });
   });
 
   await createAuditLog({
