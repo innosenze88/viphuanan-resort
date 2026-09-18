@@ -65,7 +65,16 @@ const NAV: NavItem[] = [
   },
   { label: "แม่บ้าน", href: "/housekeeping", icon: "🧹" },
   { label: "ซ่อมบำรุง", href: "/maintenance", icon: "🔧" },
-  { label: "รายงาน", href: "/reports", icon: "📈" },
+  {
+    label: "รายงาน",
+    href: "/reports",
+    icon: "📈",
+    children: [
+      { label: "P&L รายเดือน", href: "/reports" },
+      { label: "อัตราการเข้าพัก", href: "/reports/occupancy" },
+      { label: "รายได้ตามแหล่ง", href: "/reports/revenue" },
+    ],
+  },
   {
     label: "ตั้งค่าระบบ",
     href: "/admin",
