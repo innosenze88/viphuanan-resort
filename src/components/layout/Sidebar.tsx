@@ -54,7 +54,15 @@ const NAV: NavItem[] = [
       { label: "การปรับปรุง", href: "/accounting/adjustments" },
     ],
   },
-  { label: "ทะเบียน รร.3/4", href: "/registration", icon: "📋" },
+  {
+    label: "ทะเบียน รร.3/4",
+    href: "/registration",
+    icon: "📋",
+    children: [
+      { label: "รายการทะเบียน", href: "/registration" },
+      { label: "รอส่ง/เกินกำหนด", href: "/registration?tab=pending" },
+    ],
+  },
   { label: "แม่บ้าน", href: "/housekeeping", icon: "🧹" },
   { label: "ซ่อมบำรุง", href: "/maintenance", icon: "🔧" },
   { label: "รายงาน", href: "/reports", icon: "📈" },

@@ -110,7 +110,11 @@ export async function checkIn(bookingId: string): Promise<{ error?: string }> {
 
   const booking = await db.booking.findUnique({
     where: { id: bookingId },
-    include: { stays: true },
+    include: {
+      stays: true,
+      guest: true,
+      room: { select: { roomNumber: true } },
+    },
   });
 
   if (!booking) return { error: "ไม่พบข้อมูลการจอง" };
@@ -120,12 +124,20 @@ export async function checkIn(bookingId: string): Promise<{ error?: string }> {
   const stay = booking.stays[0];
   if (!stay) return { error: "ไม่พบข้อมูล Stay" };
 
+  const now = new Date();
+  const isForeign = booking.guest.nationality !== "ไทย" && booking.guest.nationality !== "Thai";
+
+  // Due-date helpers
+  const endOfDay = new Date(now);
+  endOfDay.setHours(23, 59, 59, 999);
+  const plus24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
   await db.$transaction(async (tx) => {
     await tx.stay.update({
       where: { id: stay.id },
       data: {
         status: StayStatus.CHECKED_IN,
-        actualCheckIn: new Date(),
+        actualCheckIn: now,
         checkedInBy: user.id,
       },
     });
@@ -139,6 +151,29 @@ export async function checkIn(bookingId: string): Promise<{ error?: string }> {
       where: { id: booking.roomId },
       data: { status: RoomStatus.OCCUPIED },
     });
+
+    const guestSnap = {
+      guestName: booking.guest.fullName,
+      nationality: booking.guest.nationality ?? undefined,
+      idType: booking.guest.idType ? String(booking.guest.idType) : undefined,
+      idNumber: booking.guest.idNumber ?? undefined,
+      roomNumber: booking.room.roomNumber,
+    };
+
+    if (isForeign) {
+      // Foreign guests: RR4 (police) + TM30 (immigration) — both due within 24h
+      await tx.registrationRecord.createMany({
+        data: [
+          { bookingId, stayId: stay.id, guestId: booking.guestId, registrationType: "RR4", checkInDate: now, dueAt: plus24h, ...guestSnap },
+          { bookingId, stayId: stay.id, guestId: booking.guestId, registrationType: "TM30", checkInDate: now, dueAt: plus24h, ...guestSnap },
+        ],
+      });
+    } else {
+      // Thai guests: RR3 (hotel register) — due by end of check-in day
+      await tx.registrationRecord.create({
+        data: { bookingId, stayId: stay.id, guestId: booking.guestId, registrationType: "RR3", checkInDate: now, dueAt: endOfDay, ...guestSnap },
+      });
+    }
   });
 
   await createAuditLog({
@@ -152,6 +187,7 @@ export async function checkIn(bookingId: string): Promise<{ error?: string }> {
   revalidatePath("/front-desk/rooms");
   revalidatePath(`/bookings/${bookingId}`);
   revalidatePath("/dashboard");
+  revalidatePath("/registration");
   return {};
 }
 

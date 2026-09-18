@@ -1,5 +1,5 @@
-// Viphuanan Resort — Prisma Schema v1.4
-// Phase 0–3 + Phase 4: Accounting
+// Viphuanan Resort — Prisma Schema v1.5
+// Phase 0–4 + Phase 5: Registration รร.3/4
 
 generator client {
   provider = "prisma-client-js"
@@ -196,6 +196,20 @@ enum ExpenseCategory {
   OTHER
 }
 
+// RR3 = Thai guests daily hotel register; RR4 = foreign guests police report; TM30 = immigration notification
+enum RegistrationType {
+  RR3
+  RR4
+  TM30
+}
+
+enum RegistrationStatus {
+  PENDING
+  SUBMITTED
+  OVERDUE
+  CANCELLED
+}
+
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 
 model User {
@@ -288,9 +302,10 @@ model Guest {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  bookings  Booking[]
-  stays     Stay[]
-  documents Document[]
+  bookings            Booking[]
+  stays               Stay[]
+  documents           Document[]
+  registrationRecords RegistrationRecord[]
 
   @@index([firstName, lastName])
   @@index([idNumber])
@@ -320,12 +335,13 @@ model Booking {
 
   guest  Guest  @relation(fields: [guestId], references: [id])
   room   Room   @relation(fields: [roomId], references: [id])
-  stays         Stay[]
-  payments      Payment[]
-  deposit       Deposit?
-  receivables   Receivable[]
-  documents     Document[]
-  journalEntries JournalEntry[]
+  stays               Stay[]
+  payments            Payment[]
+  deposit             Deposit?
+  receivables         Receivable[]
+  documents           Document[]
+  journalEntries      JournalEntry[]
+  registrationRecords RegistrationRecord[]
 
   @@index([guestId])
   @@index([roomId])
@@ -349,9 +365,10 @@ model Stay {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
-  booking Booking @relation(fields: [bookingId], references: [id])
-  guest   Guest   @relation(fields: [guestId], references: [id])
-  room    Room    @relation(fields: [roomId], references: [id])
+  booking             Booking              @relation(fields: [bookingId], references: [id])
+  guest               Guest                @relation(fields: [guestId], references: [id])
+  room                Room                 @relation(fields: [roomId], references: [id])
+  registrationRecords RegistrationRecord[]
 
   @@index([bookingId])
   @@index([guestId])
@@ -597,6 +614,48 @@ model Expense {
   @@index([expenseDate])
   @@index([category])
   @@map("expenses")
+}
+
+// ─── REGISTRATION ─────────────────────────────────────────────────────────────
+
+// Auto-created at check-in. RR3 for Thai guests, RR4+TM30 for foreign guests.
+// dueAt = midnight same day for RR3; checkIn + 24h for RR4/TM30.
+model RegistrationRecord {
+  id               String             @id @default(cuid())
+  bookingId        String
+  stayId           String
+  guestId          String
+
+  registrationType RegistrationType
+  status           RegistrationStatus @default(PENDING)
+
+  checkInDate      DateTime
+  roomNumber       String
+  // Denormalized snapshot so print forms remain accurate if guest record changes
+  guestName        String
+  nationality      String?
+  idType           String?
+  idNumber         String?
+
+  dueAt            DateTime           // Submission deadline
+  submittedBy      String?
+  submittedAt      DateTime?
+  submissionRef    String?            // Government reference / confirmation number
+  notes            String?
+
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  booking  Booking @relation(fields: [bookingId], references: [id])
+  stay     Stay    @relation(fields: [stayId], references: [id])
+  guest    Guest   @relation(fields: [guestId], references: [id])
+
+  @@index([status])
+  @@index([bookingId])
+  @@index([guestId])
+  @@index([dueAt])
+  @@index([checkInDate])
+  @@map("registration_records")
 }
 
 // ─── SETTINGS ─────────────────────────────────────────────────────────────────
