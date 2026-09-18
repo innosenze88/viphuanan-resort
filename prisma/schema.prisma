@@ -1,5 +1,5 @@
-// Viphuanan Resort — Prisma Schema v1.3
-// Phase 0: Foundation + Phase 1: Resort Core + Phase 2: Payment + Phase 3: Document AI/OCR
+// Viphuanan Resort — Prisma Schema v1.4
+// Phase 0–3 + Phase 4: Accounting
 
 generator client {
   provider = "prisma-client-js"
@@ -161,6 +161,41 @@ enum OcrStatus {
   FAILED
 }
 
+enum AccountCategory {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum JournalStatus {
+  DRAFT
+  PENDING_REVIEW
+  VERIFIED
+  APPROVED
+  POSTED
+}
+
+enum JournalType {
+  REVENUE
+  EXPENSE
+  ADJUSTMENT
+  REVERSAL
+  CORRECTION
+  OTHER
+}
+
+enum ExpenseCategory {
+  UTILITIES
+  MAINTENANCE
+  SUPPLIES
+  STAFFING
+  MARKETING
+  DEPRECIATION
+  OTHER
+}
+
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 
 model User {
@@ -285,11 +320,12 @@ model Booking {
 
   guest  Guest  @relation(fields: [guestId], references: [id])
   room   Room   @relation(fields: [roomId], references: [id])
-  stays  Stay[]
-  payments    Payment[]
-  deposit     Deposit?
-  receivables Receivable[]
-  documents   Document[]
+  stays         Stay[]
+  payments      Payment[]
+  deposit       Deposit?
+  receivables   Receivable[]
+  documents     Document[]
+  journalEntries JournalEntry[]
 
   @@index([guestId])
   @@index([roomId])
@@ -469,6 +505,98 @@ model Document {
   @@index([guestId])
   @@index([createdAt])
   @@map("documents")
+}
+
+// ─── ACCOUNTING ───────────────────────────────────────────────────────────────
+
+model ChartOfAccount {
+  id          String          @id @default(cuid())
+  code        String          @unique  // e.g. "4001", "5001"
+  name        String
+  category    AccountCategory
+  description String?
+  active      Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  debitLines  JournalLine[]   @relation("DebitAccount")
+  creditLines JournalLine[]   @relation("CreditAccount")
+
+  @@index([category])
+  @@map("chart_of_accounts")
+}
+
+// Immutable after POSTED — use Reversal or Adjustment entries to correct
+model JournalEntry {
+  id          String        @id @default(cuid())
+  entryNumber String        @unique
+  type        JournalType
+  status      JournalStatus @default(DRAFT)
+  entryDate   DateTime      @db.Date
+  description String
+  bookingId   String?
+  paymentId   String?       // Link to the Payment that triggered this entry
+
+  submittedBy  String?
+  submittedAt  DateTime?
+  verifiedBy   String?
+  verifiedAt   DateTime?
+  approvedBy   String?
+  approvedAt   DateTime?
+  postedBy     String?
+  postedAt     DateTime?
+
+  reversalOf  String?       // ID of the POSTED entry this reversal is for
+  adjustmentOf String?      // ID of the POSTED entry this adjusts
+
+  createdBy   String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  lines   JournalLine[]
+  booking Booking?      @relation(fields: [bookingId], references: [id])
+
+  @@index([status])
+  @@index([entryDate])
+  @@index([bookingId])
+  @@map("journal_entries")
+}
+
+// Each line is either a debit or credit on a specific account
+model JournalLine {
+  id             String   @id @default(cuid())
+  journalEntryId String
+  debitAccountId String?
+  creditAccountId String?
+  amount         Decimal  @db.Decimal(10, 2)
+  description    String?
+  createdAt      DateTime @default(now())
+
+  journalEntry   JournalEntry    @relation(fields: [journalEntryId], references: [id])
+  debitAccount   ChartOfAccount? @relation("DebitAccount", fields: [debitAccountId], references: [id])
+  creditAccount  ChartOfAccount? @relation("CreditAccount", fields: [creditAccountId], references: [id])
+
+  @@index([journalEntryId])
+  @@map("journal_lines")
+}
+
+// Direct expense entry (creates a JournalEntry internally when posted)
+model Expense {
+  id              String          @id @default(cuid())
+  expenseDate     DateTime        @db.Date
+  category        ExpenseCategory @default(OTHER)
+  description     String
+  amount          Decimal         @db.Decimal(10, 2)
+  vendor          String?
+  receiptRef      String?         // Document ID or reference
+  journalEntryId  String?         // Linked journal once posted
+  createdBy       String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([expenseDate])
+  @@index([category])
+  @@map("expenses")
 }
 
 // ─── SETTINGS ─────────────────────────────────────────────────────────────────
