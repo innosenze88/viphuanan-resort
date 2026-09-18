@@ -19,7 +19,7 @@ services:
     working_dir: /app
     volumes:
       - .:/app
-    command: sh -c "npm install --prefer-offline 2>/dev/null; node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts"
+    command: sh -c "apk add --no-cache openssl && npm install --prefer-offline 2>/dev/null; node_modules/.bin/prisma migrate deploy && node_modules/.bin/tsx prisma/seed.ts"
     environment:
       DATABASE_URL: postgresql://postgres:viphuanan2024@db:5432/viphuanan
     depends_on:
