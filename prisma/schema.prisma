@@ -1,0 +1,508 @@
+// Viphuanan Resort — Prisma Schema v1.3
+// Phase 0: Foundation + Phase 1: Resort Core + Phase 2: Payment + Phase 3: Document AI/OCR
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ───────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  OWNER
+  MANAGER
+  FRONT_DESK
+  ACCOUNTING
+  HOUSEKEEPING
+}
+
+enum RoomStatus {
+  VACANT
+  RESERVED
+  OCCUPIED
+  DIRTY
+  CLEANING
+  INSPECTED
+  OUT_OF_ORDER
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  ARCHIVE
+  RESTORE
+  LOGIN
+  LOGOUT
+  VERIFY
+  REJECT
+  APPROVE
+  POST
+  ADJUST
+  REFUND
+  EXPORT
+  CHECKIN
+  CHECKOUT
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+  NO_SHOW
+  CHECKED_IN
+  CHECKED_OUT
+}
+
+enum BookingSource {
+  DIRECT
+  WALK_IN
+  PHONE
+  WEBSITE
+  BOOKING_COM
+  AGODA
+  OTHER_OTA
+  OTHER
+}
+
+enum StayStatus {
+  EXPECTED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+  NO_SHOW
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  UNSPECIFIED
+}
+
+enum IdType {
+  THAI_ID
+  PASSPORT
+  DRIVING_LICENSE
+  OTHER
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  PROMPTPAY
+  PAYMENT_GATEWAY
+  OTA
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  VERIFIED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+enum PaymentPurpose {
+  DEPOSIT
+  BALANCE
+  FULL
+  EXTRA_CHARGE
+}
+
+enum DepositStatus {
+  EXPECTED
+  RECEIVED
+  APPLIED
+  PARTIALLY_REFUNDED
+  REFUNDED
+  FORFEITED
+}
+
+enum ReceivableStatus {
+  OPEN
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum RefundStatus {
+  PENDING
+  APPROVED
+  COMPLETED
+  REJECTED
+}
+
+enum DocumentType {
+  PAYMENT_SLIP
+  INVOICE
+  RECEIPT
+  GUEST_ID
+  CONTRACT
+  OTHER
+}
+
+enum DocumentStatus {
+  PENDING_REVIEW
+  VERIFIED
+  REJECTED
+  ARCHIVED
+}
+
+enum OcrStatus {
+  NOT_STARTED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ─── AUTH ─────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String
+  passwordHash  String
+  role          UserRole  @default(FRONT_DESK)
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastLoginAt   DateTime?
+
+  sessions  Session[]
+  auditLogs AuditLog[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ─── ROOMS ────────────────────────────────────────────────────────────────────
+
+model RoomType {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rooms Room[]
+
+  @@map("room_types")
+}
+
+model Room {
+  id           String     @id @default(cuid())
+  roomNumber   String     @unique
+  roomTypeId   String?
+  basePrice    Decimal    @default(0) @db.Decimal(10, 2)
+  status       RoomStatus @default(VACANT)
+  active       Boolean    @default(true)
+  description  String?
+  archivedAt   DateTime?
+  archivedBy   String?
+  archiveReason String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  roomType RoomType? @relation(fields: [roomTypeId], references: [id])
+  stays    Stay[]
+  bookings Booking[]
+
+  @@map("rooms")
+}
+
+// ─── GUESTS ───────────────────────────────────────────────────────────────────
+
+model Guest {
+  id           String    @id @default(cuid())
+  title        String?
+  firstName    String
+  lastName     String
+  fullName     String
+  gender       Gender    @default(UNSPECIFIED)
+  nationality  String?
+  dateOfBirth  DateTime?
+  idType       IdType?
+  idNumber     String?
+  idIssuer     String?
+  address      String?
+  occupation   String?
+  phone        String?
+  email        String?
+  notes        String?
+  active       Boolean   @default(true)
+  archivedAt   DateTime?
+  archivedBy   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  bookings  Booking[]
+  stays     Stay[]
+  documents Document[]
+
+  @@index([firstName, lastName])
+  @@index([idNumber])
+  @@index([phone])
+  @@map("guests")
+}
+
+// ─── BOOKINGS ─────────────────────────────────────────────────────────────────
+
+model Booking {
+  id               String        @id @default(cuid())
+  bookingReference String        @unique
+  guestId          String
+  roomId           String
+  source           BookingSource @default(DIRECT)
+  checkInDate      DateTime      @db.Date
+  checkOutDate     DateTime      @db.Date
+  numberOfNights   Int
+  roomRate         Decimal       @db.Decimal(10, 2)
+  discount         Decimal       @default(0) @db.Decimal(10, 2)
+  grossAmount      Decimal       @db.Decimal(10, 2)
+  status           BookingStatus @default(CONFIRMED)
+  notes            String?
+  createdBy        String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  guest  Guest  @relation(fields: [guestId], references: [id])
+  room   Room   @relation(fields: [roomId], references: [id])
+  stays  Stay[]
+  payments    Payment[]
+  deposit     Deposit?
+  receivables Receivable[]
+  documents   Document[]
+
+  @@index([guestId])
+  @@index([roomId])
+  @@index([checkInDate])
+  @@map("bookings")
+}
+
+// ─── STAYS ────────────────────────────────────────────────────────────────────
+
+model Stay {
+  id              String     @id @default(cuid())
+  bookingId       String
+  guestId         String
+  roomId          String
+  actualCheckIn   DateTime?
+  actualCheckOut  DateTime?
+  status          StayStatus @default(EXPECTED)
+  notes           String?
+  checkedInBy     String?
+  checkedOutBy    String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+  guest   Guest   @relation(fields: [guestId], references: [id])
+  room    Room    @relation(fields: [roomId], references: [id])
+
+  @@index([bookingId])
+  @@index([guestId])
+  @@index([roomId])
+  @@index([status])
+  @@map("stays")
+}
+
+// ─── PAYMENTS ────────────────────────────────────────────────────────────────
+
+// A single payment event (cash received, transfer slip uploaded, etc.)
+// revenue = booking.grossAmount, NOT sum(payments) — deposits are NOT double-counted
+model Payment {
+  id              String         @id @default(cuid())
+  paymentReference String        @unique
+  bookingId       String
+  amount          Decimal        @db.Decimal(10, 2)
+  method          PaymentMethod
+  purpose         PaymentPurpose
+  status          PaymentStatus  @default(PENDING)
+  transactionRef  String?        // Bank ref / slip ref
+  paidAt          DateTime?      // Actual payment datetime
+  verifiedBy      String?
+  verifiedAt      DateTime?
+  notes           String?
+  createdBy       String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  booking     Booking              @relation(fields: [bookingId], references: [id])
+  allocations PaymentAllocation[]
+  refunds     Refund[]
+
+  @@index([bookingId])
+  @@index([status])
+  @@index([paidAt])
+  @@map("payments")
+}
+
+// Deposit tracked separately — applied against the booking's balance at check-out
+model Deposit {
+  id          String        @id @default(cuid())
+  bookingId   String        @unique  // one deposit per booking
+  amount      Decimal       @db.Decimal(10, 2)
+  status      DepositStatus @default(EXPECTED)
+  paymentId   String?       // Reference to the Payment that funded this deposit (no FK — avoids circular rel)
+  appliedAt   DateTime?
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@index([bookingId])
+  @@map("deposits")
+}
+
+// Links one Payment to one Booking for multi-booking scenarios (OTA, group bookings)
+model PaymentAllocation {
+  id        String   @id @default(cuid())
+  paymentId String
+  bookingId String
+  amount    Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id])
+
+  @@index([paymentId])
+  @@index([bookingId])
+  @@map("payment_allocations")
+}
+
+// Amount owed but not yet paid (e.g. OTA channel billing)
+model Receivable {
+  id          String           @id @default(cuid())
+  bookingId   String
+  description String
+  amount      Decimal          @db.Decimal(10, 2)
+  amountPaid  Decimal          @default(0) @db.Decimal(10, 2)
+  dueDate     DateTime?        @db.Date
+  status      ReceivableStatus @default(OPEN)
+  notes       String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@index([bookingId])
+  @@index([status])
+  @@map("receivables")
+}
+
+// Refund against a specific Payment — immutable audit trail
+model Refund {
+  id          String       @id @default(cuid())
+  paymentId   String
+  amount      Decimal      @db.Decimal(10, 2)
+  reason      String
+  status      RefundStatus @default(PENDING)
+  approvedBy  String?
+  approvedAt  DateTime?
+  completedAt DateTime?
+  notes       String?
+  createdBy   String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  payment Payment @relation(fields: [paymentId], references: [id])
+
+  @@index([paymentId])
+  @@map("refunds")
+}
+
+// ─── DOCUMENTS ────────────────────────────────────────────────────────────────
+
+// Immutable after upload — never edit the stored file, only change status/review fields
+// AI suggests, human verifies — ocrConfidence HIGH does NOT auto-verify
+model Document {
+  id              String         @id @default(cuid())
+  fileName        String
+  storagePath     String
+  mimeType        String
+  fileSize        Int
+  fileHash        String
+
+  documentType    DocumentType   @default(OTHER)
+  status          DocumentStatus @default(PENDING_REVIEW)
+
+  bookingId       String?
+  guestId         String?
+  uploadedBy      String?
+
+  ocrStatus       OcrStatus      @default(NOT_STARTED)
+  ocrRawText      String?
+  ocrConfidence   Float?
+  ocrExtracted    Json?
+
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  reviewNotes     String?
+  rejectionReason String?
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  booking Booking? @relation(fields: [bookingId], references: [id])
+  guest   Guest?   @relation(fields: [guestId], references: [id])
+
+  @@index([status])
+  @@index([bookingId])
+  @@index([guestId])
+  @@index([createdAt])
+  @@map("documents")
+}
+
+// ─── SETTINGS ─────────────────────────────────────────────────────────────────
+
+model SystemSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?
+
+  @@map("system_settings")
+}
+
+// ─── AUDIT LOG ────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  userId      String?
+  action      AuditAction
+  entityType  String
+  entityId    String
+  beforeValue Json?
+  afterValue  Json?
+  reason      String?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime    @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
