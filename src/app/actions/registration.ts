@@ -78,7 +78,8 @@ export async function cancelRegistration(
   return {};
 }
 
-// Called by a scheduled job / cron — marks PENDING records past dueAt as OVERDUE
+// Called during page render — marks PENDING records past dueAt as OVERDUE.
+// No revalidatePath here: the page that calls this is already rendering fresh data.
 export async function markOverdueRegistrations(): Promise<{ updated: number }> {
   const now = new Date();
   const result = await db.registrationRecord.updateMany({
@@ -88,6 +89,5 @@ export async function markOverdueRegistrations(): Promise<{ updated: number }> {
     },
     data: { status: "OVERDUE" },
   });
-  revalidatePath("/registration");
   return { updated: result.count };
 }

@@ -14,7 +14,7 @@ const NAV: NavItem[] = [
   { label: "แดชบอร์ด", href: "/dashboard", icon: "📊" },
   {
     label: "Front Desk",
-    href: "/front-desk",
+    href: "/front-desk/rooms",
     icon: "🏨",
     children: [
       { label: "Room Board", href: "/front-desk/rooms" },
